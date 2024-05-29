@@ -7,8 +7,16 @@ import { merge, isErrorResult } from 'openapi-merge';
 import { doLog, logError } from '@paima/utils';
 import path from 'path';
 import { ValidateError } from 'tsoa';
+import { expressWs } from './express-ws/express-ws';
 
-const server: Express = express();
+// todo: go over naming conventions below
+// note: the below is retain backwards compatiblity, allowing server to be used as a drop-in replacement for express
+//       while also being compatible with express-ws, exposing server.ws in addition to server.get, server.post, etc.
+type ExpressWs = ReturnType<typeof expressWs>;
+type Server = Express & ExpressWs['app'];
+type ExpressWsServer = Omit<ExpressWs, 'app'> & { app: Server };
+
+const { app: server, wss: wsServer }: ExpressWsServer = expressWs(express()) as ExpressWsServer;
 const bodyParser = express.json();
 
 server.use(cors());
@@ -22,6 +30,12 @@ function startServer(): void {
   server.listen(port, () => {
     doLog(`Game Node Webserver Started At: http://localhost:${port}`);
   });
+
+  // const start = Date.now();
+
+  // setInterval(() => {
+  //   doLog(`Websocket after ${Math.round(Date.now() - start) / 1000} seconds: ${wss}`);
+  // }, 1000);
 }
 
 function getOpenApiJson(userStateMachineApi: object | undefined): object {
@@ -78,4 +92,4 @@ function registerDocs(userStateMachineApi: object | undefined): void {
   const openApi = getOpenApiJson(userStateMachineApi);
   server.use('/docs', swaggerServer, swaggerUi.setup(openApi, { explorer: false }));
 }
-export { server, startServer, registerDocs, registerValidationErrorHandler };
+export { server, wsServer, startServer, registerDocs, registerValidationErrorHandler };

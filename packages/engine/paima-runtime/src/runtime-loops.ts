@@ -16,6 +16,7 @@ import { cleanNoncesIfTime } from './nonce-gc.js';
 import type { PoolClient } from 'pg';
 import { FUNNEL_PRESYNC_FINISHED, ConfigNetworkType } from '@paima/utils';
 import type { CardanoConfig, EvmConfig } from '@paima/utils';
+import { paimaWsServer } from './index.js';
 
 // The core logic of paima runtime which polls the funnel and processes the resulting chain data using the game's state machine.
 // Of note, the runtime is designed to continue running/attempting to process the next required block no matter what errors propagate upwards.
@@ -393,7 +394,7 @@ async function blockCoreProcess(
     if (DataMigrations.hasPendingMigrationForBlock(chainData.blockNumber)) {
       await DataMigrations.applyDataDBMigrations(dbTx, chainData.blockNumber);
     }
-    await gameStateMachine.process(dbTx, chainData);
+    await gameStateMachine.process(dbTx, chainData, paimaWsServer);
     exitIfStopped(run);
   } catch (err) {
     doLog(`[paima-runtime] Error occurred while SM processing of block ${chainData.blockNumber}:`);

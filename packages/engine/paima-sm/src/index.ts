@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import type { PoolClient, Client } from 'pg';
 
 import type { STFSubmittedData } from '@paima/utils';
+
 import {
   doLog,
   ENV,
@@ -47,6 +48,7 @@ import type {
 } from './types.js';
 import { ConfigNetworkType } from '@paima/utils';
 import assertNever from 'assert-never';
+import type { WebSocketServer } from 'ws';
 
 export * from './types.js';
 export type * from './types.js';
@@ -187,7 +189,11 @@ const SM: GameStateMachineInitializer = {
         }
       },
       // Core function which triggers state transitions
-      process: async (dbTx: PoolClient, latestChainData: ChainData): Promise<void> => {
+      process: async (
+        dbTx: PoolClient,
+        latestChainData: ChainData,
+        wss: WebSocketServer
+      ): Promise<void> => {
         // Acquire correct STF based on router (based on block height)
         const gameStateTransition = gameStateTransitionRouter(latestChainData.blockNumber);
         // Save blockHeight and randomness seed
@@ -229,7 +235,8 @@ const SM: GameStateMachineInitializer = {
           latestChainData,
           dbTx,
           gameStateTransition,
-          randomnessGenerator
+          randomnessGenerator,
+          wss
         );
 
         // Execute user submitted input data
@@ -358,7 +365,8 @@ async function processScheduledData(
   latestChainData: ChainData,
   DBConn: PoolClient,
   gameStateTransition: GameStateTransitionFunction,
-  randomnessGenerator: Prando
+  randomnessGenerator: Prando,
+  wss: WebSocketServer
 ): Promise<number> {
   const scheduledData = await getScheduledDataByBlockHeight.run(
     { block_height: latestChainData.blockNumber },
@@ -377,6 +385,9 @@ async function processScheduledData(
         scheduledTxHash: data.tx_hash,
         extensionName: data.cde_name,
       };
+
+      wss.clients.forEach(client => client.send(`scheduledData: ${data.input_data}`));
+
       // Trigger STF
       let sqlQueries: SQLUpdate[] = [];
       try {

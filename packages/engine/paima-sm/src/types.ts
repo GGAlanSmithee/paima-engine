@@ -20,6 +20,7 @@ import type {
 import { Type } from '@sinclair/typebox';
 import type { Static } from '@sinclair/typebox';
 import type { ProjectedNftStatus } from '@dcspark/carp-client';
+import type { WebSocketServer } from 'ws';
 
 export { SubmittedChainData, SubmittedData };
 
@@ -661,7 +662,7 @@ export interface GameStateMachine {
   getReadonlyDbConn: () => Pool;
   getPersistentReadonlyDbConn: () => Client;
   getReadWriteDbConn: () => Pool;
-  process: (dbTx: PoolClient, chainData: ChainData) => Promise<void>;
+  process: (dbTx: PoolClient, chainData: ChainData, wss: WebSocketServer) => Promise<void>;
   presyncProcess: (dbTx: PoolClient, latestCdeData: PresyncChainData) => Promise<void>;
   markPresyncMilestone: (blockHeight: number, network: string) => Promise<void>;
   dryRun: (gameInput: string, userAddress: string) => Promise<boolean>;
