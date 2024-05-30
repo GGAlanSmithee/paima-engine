@@ -189,13 +189,7 @@ const SM: GameStateMachineInitializer = {
         }
       },
       // Core function which triggers state transitions
-      process: async (
-        dbTx: PoolClient,
-        latestChainData: ChainData
-      ): Promise<{
-        scheduledInputs: IGetScheduledDataByBlockHeightResult[];
-        userInputs: SubmittedData[];
-      }> => {
+      process: async (dbTx: PoolClient, latestChainData: ChainData): Promise<void> => {
         // Acquire correct STF based on router (based on block height)
         const gameStateTransition = gameStateTransitionRouter(latestChainData.blockNumber);
         // Save blockHeight and randomness seed
@@ -230,15 +224,10 @@ const SM: GameStateMachineInitializer = {
         await processInternalEvents(latestChainData.internalEvents, dbTx);
 
         // Fetch and execute scheduled input data
-        const scheduledInputs = await processScheduledData(
-          latestChainData,
-          dbTx,
-          gameStateTransition,
-          randomnessGenerator
-        );
+        await processScheduledData(latestChainData, dbTx, gameStateTransition, randomnessGenerator);
 
         // Execute user submitted input data
-        const userInputs = await processUserInputs(
+        const userInputsLength = await processUserInputs(
           latestChainData,
           dbTx,
           gameStateTransition,
@@ -246,18 +235,13 @@ const SM: GameStateMachineInitializer = {
         );
 
         // Extra logging
-        if (cdeDataLength + userInputs.length + scheduledInputs.length > 0)
+        if (cdeDataLength + userInputsLength + (latestChainData.scheduledData?.length ?? 0) > 0)
           doLog(
-            `Processed ${userInputs.length} user inputs, ${scheduledInputs.length} scheduled inputs and ${cdeDataLength} CDE events in block #${latestChainData.blockNumber}`
+            `Processed ${userInputsLength} user inputs, ${latestChainData.scheduledData?.length} scheduled inputs and ${cdeDataLength} CDE events in block #${latestChainData.blockNumber}`
           );
 
         // Commit finishing of processing to DB
         await blockHeightDone.run({ block_height: latestChainData.blockNumber }, dbTx);
-
-        return {
-          scheduledInputs,
-          userInputs,
-        };
       },
     };
   },
@@ -369,12 +353,8 @@ async function processScheduledData(
   DBConn: PoolClient,
   gameStateTransition: GameStateTransitionFunction,
   randomnessGenerator: Prando
-): Promise<IGetScheduledDataByBlockHeightResult[]> {
-  const scheduledData = await getScheduledDataByBlockHeight.run(
-    { block_height: latestChainData.blockNumber },
-    DBConn
-  );
-  for (const data of scheduledData) {
+): Promise<void> {
+  for (const data of latestChainData.scheduledData ?? []) {
     try {
       const inputData: STFSubmittedData = {
         userId: SCHEDULED_DATA_ID,
@@ -414,7 +394,6 @@ async function processScheduledData(
       await deleteScheduled.run({ id: data.id }, DBConn);
     }
   }
-  return scheduledData;
 }
 
 // Process all of the user inputs data inputs by running each of them through the game STF,
@@ -425,7 +404,7 @@ async function processUserInputs(
   DBConn: PoolClient,
   gameStateTransition: GameStateTransitionFunction,
   randomnessGenerator: Prando
-): Promise<SubmittedData[]> {
+): Promise<number> {
   for (const submittedData of latestChainData.submittedData) {
     // Check nonce is valid
     if (submittedData.inputNonce === '') {
@@ -507,7 +486,7 @@ async function processUserInputs(
       }
     }
   }
-  return latestChainData.submittedData;
+  return latestChainData.submittedData.length;
 }
 
 async function processInternalEvents(

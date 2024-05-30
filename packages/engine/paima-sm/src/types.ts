@@ -29,6 +29,7 @@ export interface ChainData {
   blockHash: string;
   blockNumber: number;
   submittedData: SubmittedData[];
+  scheduledData?: IGetScheduledDataByBlockHeightResult[];
   extensionDatums?: ChainDataExtensionDatum[];
   /**
    * Internal events are events related to this block, but that do not contribute to the block hash
@@ -662,13 +663,7 @@ export interface GameStateMachine {
   getReadonlyDbConn: () => Pool;
   getPersistentReadonlyDbConn: () => Client;
   getReadWriteDbConn: () => Pool;
-  process: (
-    dbTx: PoolClient,
-    chainData: ChainData
-  ) => Promise<{
-    scheduledInputs: IGetScheduledDataByBlockHeightResult[];
-    userInputs: SubmittedData[];
-  }>;
+  process: (dbTx: PoolClient, chainData: ChainData) => Promise<void>;
   presyncProcess: (dbTx: PoolClient, latestCdeData: PresyncChainData) => Promise<void>;
   markPresyncMilestone: (blockHeight: number, network: string) => Promise<void>;
   dryRun: (gameInput: string, userAddress: string) => Promise<boolean>;

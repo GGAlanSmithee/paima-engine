@@ -1,6 +1,6 @@
 import process from 'process';
 import { doLog, logError, delay, GlobalConfig } from '@paima/utils';
-import { tx, DataMigrations } from '@paima/db';
+import { tx, DataMigrations, getScheduledDataByBlockHeight } from '@paima/db';
 import { getEarliestStartBlockheight, getEarliestStartSlot } from './cde-config/utils.js';
 import type { ChainFunnel, IFunnelFactory, ReadPresyncDataFrom } from './types.js';
 import type { ChainData, ChainDataExtension, GameStateMachine } from '@paima/sm';
@@ -394,14 +394,17 @@ async function blockCoreProcess(
     if (DataMigrations.hasPendingMigrationForBlock(chainData.blockNumber)) {
       await DataMigrations.applyDataDBMigrations(dbTx, chainData.blockNumber);
     }
-    const { scheduledInputs, userInputs } = await gameStateMachine.process(dbTx, chainData);
+
+    chainData.scheduledData = await getScheduledDataByBlockHeight.run(
+      { block_height: chainData.blockNumber },
+      dbTx
+    );
+
+    await gameStateMachine.process(dbTx, chainData);
 
     const gameStateTransitionWsMsg = JSON.stringify({
       event: 'gameStateTransition',
-      inputs: [
-        ...scheduledInputs.map(data => data.input_data),
-        ...userInputs.map(data => data.inputData),
-      ],
+      chainData,
     });
 
     // TODO: Should we only send if there are inputs?
