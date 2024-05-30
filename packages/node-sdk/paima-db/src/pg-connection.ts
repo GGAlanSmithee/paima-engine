@@ -3,10 +3,10 @@ import pg from 'pg';
 
 import { logError } from '@paima/utils';
 
-let readonlyDBConn: pg.Pool | null;
+// let readonlyDBConn: pg.Pool | null;
 
 export const getConnection = (creds: PoolConfig, readonly = false): pg.Pool => {
-  if (readonly && readonlyDBConn) return readonlyDBConn;
+  // if (readonly && readonlyDBConn) return readonlyDBConn;
 
   const pool = new pg.Pool(creds);
   pool.on('error', err => logError(err));
@@ -17,11 +17,11 @@ export const getConnection = (creds: PoolConfig, readonly = false): pg.Pool => {
     });
   });
 
-  if (readonly) {
-    const ensureReadOnly = `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;`;
-    void pool.query(ensureReadOnly); // note: this query modifies the DB state
-    readonlyDBConn = pool;
-  }
+  // if (readonly) {
+  //   const ensureReadOnly = `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;`;
+  //   void pool.query(ensureReadOnly); // note: this query modifies the DB state
+  //   readonlyDBConn = pool;
+  // }
 
   return pool;
 };
