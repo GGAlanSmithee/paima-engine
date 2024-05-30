@@ -394,7 +394,19 @@ async function blockCoreProcess(
     if (DataMigrations.hasPendingMigrationForBlock(chainData.blockNumber)) {
       await DataMigrations.applyDataDBMigrations(dbTx, chainData.blockNumber);
     }
-    await gameStateMachine.process(dbTx, chainData, paimaWsServer);
+    const { scheduledInputs, userInputs } = await gameStateMachine.process(dbTx, chainData);
+
+    const gameStateTransitionWsMsg = JSON.stringify({
+      event: 'gameStateTransition',
+      inputs: [
+        ...scheduledInputs.map(data => data.input_data),
+        ...userInputs.map(data => data.inputData),
+      ],
+    });
+
+    // TODO: Should we only send if there are inputs?
+    paimaWsServer.clients.forEach(client => client.send(gameStateTransitionWsMsg));
+
     exitIfStopped(run);
   } catch (err) {
     doLog(`[paima-runtime] Error occurred while SM processing of block ${chainData.blockNumber}:`);

@@ -1,6 +1,6 @@
 import type { Client, Pool, PoolClient, PoolConfig } from 'pg';
 
-import type { SQLUpdate } from '@paima/db';
+import type { IGetScheduledDataByBlockHeightResult, SQLUpdate } from '@paima/db';
 import type {
   ChainDataExtensionDatumType,
   ChainDataExtensionType,
@@ -662,7 +662,13 @@ export interface GameStateMachine {
   getReadonlyDbConn: () => Pool;
   getPersistentReadonlyDbConn: () => Client;
   getReadWriteDbConn: () => Pool;
-  process: (dbTx: PoolClient, chainData: ChainData, wss: WebSocketServer) => Promise<void>;
+  process: (
+    dbTx: PoolClient,
+    chainData: ChainData
+  ) => Promise<{
+    scheduledInputs: IGetScheduledDataByBlockHeightResult[];
+    userInputs: SubmittedData[];
+  }>;
   presyncProcess: (dbTx: PoolClient, latestCdeData: PresyncChainData) => Promise<void>;
   markPresyncMilestone: (blockHeight: number, network: string) => Promise<void>;
   dryRun: (gameInput: string, userAddress: string) => Promise<boolean>;

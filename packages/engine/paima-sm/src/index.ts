@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import type { PoolClient, Client } from 'pg';
 
-import type { STFSubmittedData } from '@paima/utils';
+import type { STFSubmittedData, SubmittedData } from '@paima/utils';
 
 import {
   doLog,
@@ -32,7 +32,7 @@ import {
   updatePaginationCursor,
   updateMinaCheckpoint,
 } from '@paima/db';
-import type { SQLUpdate } from '@paima/db';
+import type { IGetScheduledDataByBlockHeightResult, SQLUpdate } from '@paima/db';
 import Prando from '@paima/prando';
 
 import { randomnessRouter } from './randomness.js';
@@ -191,18 +191,17 @@ const SM: GameStateMachineInitializer = {
       // Core function which triggers state transitions
       process: async (
         dbTx: PoolClient,
-        latestChainData: ChainData,
-        wss: WebSocketServer
-      ): Promise<void> => {
+        latestChainData: ChainData
+      ): Promise<{
+        scheduledInputs: IGetScheduledDataByBlockHeightResult[];
+        userInputs: SubmittedData[];
+      }> => {
         // Acquire correct STF based on router (based on block height)
         const gameStateTransition = gameStateTransitionRouter(latestChainData.blockNumber);
         // Save blockHeight and randomness seed
         const getSeed = randomnessRouter(randomnessProtocolEnum);
         const seed = await getSeed(latestChainData, dbTx);
-        await saveLastBlockHeight.run(
-          { block_height: latestChainData.blockNumber, seed: seed },
-          dbTx
-        );
+        await saveLastBlockHeight.run({ block_height: latestChainData.blockNumber, seed }, dbTx);
         // Generate Prando object
         const randomnessGenerator = new Prando(seed);
 
@@ -231,16 +230,15 @@ const SM: GameStateMachineInitializer = {
         await processInternalEvents(latestChainData.internalEvents, dbTx);
 
         // Fetch and execute scheduled input data
-        const scheduledInputsLength = await processScheduledData(
+        const scheduledInputs = await processScheduledData(
           latestChainData,
           dbTx,
           gameStateTransition,
-          randomnessGenerator,
-          wss
+          randomnessGenerator
         );
 
         // Execute user submitted input data
-        const userInputsLength = await processUserInputs(
+        const userInputs = await processUserInputs(
           latestChainData,
           dbTx,
           gameStateTransition,
@@ -248,13 +246,18 @@ const SM: GameStateMachineInitializer = {
         );
 
         // Extra logging
-        if (cdeDataLength + userInputsLength + scheduledInputsLength > 0)
+        if (cdeDataLength + userInputs.length + scheduledInputs.length > 0)
           doLog(
-            `Processed ${userInputsLength} user inputs, ${scheduledInputsLength} scheduled inputs and ${cdeDataLength} CDE events in block #${latestChainData.blockNumber}`
+            `Processed ${userInputs.length} user inputs, ${scheduledInputs.length} scheduled inputs and ${cdeDataLength} CDE events in block #${latestChainData.blockNumber}`
           );
 
         // Commit finishing of processing to DB
         await blockHeightDone.run({ block_height: latestChainData.blockNumber }, dbTx);
+
+        return {
+          scheduledInputs,
+          userInputs,
+        };
       },
     };
   },
@@ -365,9 +368,8 @@ async function processScheduledData(
   latestChainData: ChainData,
   DBConn: PoolClient,
   gameStateTransition: GameStateTransitionFunction,
-  randomnessGenerator: Prando,
-  wss: WebSocketServer
-): Promise<number> {
+  randomnessGenerator: Prando
+): Promise<IGetScheduledDataByBlockHeightResult[]> {
   const scheduledData = await getScheduledDataByBlockHeight.run(
     { block_height: latestChainData.blockNumber },
     DBConn
@@ -385,8 +387,6 @@ async function processScheduledData(
         scheduledTxHash: data.tx_hash,
         extensionName: data.cde_name,
       };
-
-      wss.clients.forEach(client => client.send(`scheduledData: ${data.input_data}`));
 
       // Trigger STF
       let sqlQueries: SQLUpdate[] = [];
@@ -414,7 +414,7 @@ async function processScheduledData(
       await deleteScheduled.run({ id: data.id }, DBConn);
     }
   }
-  return scheduledData.length;
+  return scheduledData;
 }
 
 // Process all of the user inputs data inputs by running each of them through the game STF,
@@ -425,7 +425,7 @@ async function processUserInputs(
   DBConn: PoolClient,
   gameStateTransition: GameStateTransitionFunction,
   randomnessGenerator: Prando
-): Promise<number> {
+): Promise<SubmittedData[]> {
   for (const submittedData of latestChainData.submittedData) {
     // Check nonce is valid
     if (submittedData.inputNonce === '') {
@@ -507,7 +507,7 @@ async function processUserInputs(
       }
     }
   }
-  return latestChainData.submittedData.length;
+  return latestChainData.submittedData;
 }
 
 async function processInternalEvents(
