@@ -1,7 +1,8 @@
 import { Pool } from 'pg';
 import type { PoolClient, Client } from 'pg';
 
-import type { STFSubmittedData } from '@paima/utils';
+import type { STFSubmittedData, SubmittedData } from '@paima/utils';
+
 import {
   doLog,
   ENV,
@@ -31,7 +32,7 @@ import {
   updatePaginationCursor,
   updateMinaCheckpoint,
 } from '@paima/db';
-import type { SQLUpdate } from '@paima/db';
+import type { IGetScheduledDataByBlockHeightResult, SQLUpdate } from '@paima/db';
 import Prando from '@paima/prando';
 
 import { randomnessRouter } from './randomness.js';
@@ -47,6 +48,7 @@ import type {
 } from './types.js';
 import { ConfigNetworkType } from '@paima/utils';
 import assertNever from 'assert-never';
+import type { WebSocketServer } from 'ws';
 
 export * from './types.js';
 export type * from './types.js';
@@ -193,10 +195,7 @@ const SM: GameStateMachineInitializer = {
         // Save blockHeight and randomness seed
         const getSeed = randomnessRouter(randomnessProtocolEnum);
         const seed = await getSeed(latestChainData, dbTx);
-        await saveLastBlockHeight.run(
-          { block_height: latestChainData.blockNumber, seed: seed },
-          dbTx
-        );
+        await saveLastBlockHeight.run({ block_height: latestChainData.blockNumber, seed }, dbTx);
         // Generate Prando object
         const randomnessGenerator = new Prando(seed);
 
@@ -225,12 +224,7 @@ const SM: GameStateMachineInitializer = {
         await processInternalEvents(latestChainData.internalEvents, dbTx);
 
         // Fetch and execute scheduled input data
-        const scheduledInputsLength = await processScheduledData(
-          latestChainData,
-          dbTx,
-          gameStateTransition,
-          randomnessGenerator
-        );
+        await processScheduledData(latestChainData, dbTx, gameStateTransition, randomnessGenerator);
 
         // Execute user submitted input data
         const userInputsLength = await processUserInputs(
@@ -241,9 +235,9 @@ const SM: GameStateMachineInitializer = {
         );
 
         // Extra logging
-        if (cdeDataLength + userInputsLength + scheduledInputsLength > 0)
+        if (cdeDataLength + userInputsLength + (latestChainData.scheduledData?.length ?? 0) > 0)
           doLog(
-            `Processed ${userInputsLength} user inputs, ${scheduledInputsLength} scheduled inputs and ${cdeDataLength} CDE events in block #${latestChainData.blockNumber}`
+            `Processed ${userInputsLength} user inputs, ${latestChainData.scheduledData?.length} scheduled inputs and ${cdeDataLength} CDE events in block #${latestChainData.blockNumber}`
           );
 
         // Commit finishing of processing to DB
@@ -359,12 +353,8 @@ async function processScheduledData(
   DBConn: PoolClient,
   gameStateTransition: GameStateTransitionFunction,
   randomnessGenerator: Prando
-): Promise<number> {
-  const scheduledData = await getScheduledDataByBlockHeight.run(
-    { block_height: latestChainData.blockNumber },
-    DBConn
-  );
-  for (const data of scheduledData) {
+): Promise<void> {
+  for (const data of latestChainData.scheduledData ?? []) {
     try {
       const inputData: STFSubmittedData = {
         userId: SCHEDULED_DATA_ID,
@@ -377,6 +367,7 @@ async function processScheduledData(
         scheduledTxHash: data.tx_hash,
         extensionName: data.cde_name,
       };
+
       // Trigger STF
       let sqlQueries: SQLUpdate[] = [];
       try {
@@ -403,7 +394,6 @@ async function processScheduledData(
       await deleteScheduled.run({ id: data.id }, DBConn);
     }
   }
-  return scheduledData.length;
 }
 
 // Process all of the user inputs data inputs by running each of them through the game STF,

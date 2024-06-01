@@ -11,6 +11,7 @@ import { server, startServer } from './server.js';
 import { initSnapshots } from './snapshots.js';
 import { startRuntime } from './runtime-loops.js';
 
+export { wsServer as paimaWsServer } from './server.js';
 export * from './cde-config/loading.js';
 export * from './cde-config/validation.js';
 export * from './cde-config/utils.js';
@@ -61,7 +62,6 @@ const paimaEngine: PaimaRuntimeInitializer = {
 
         // pass endpoints to web server and run
         startServer();
-
         if (serverOnlyMode) {
           doLog(`Running in webserver-only mode. No new blocks/game inputs will be synced.`);
         } else {

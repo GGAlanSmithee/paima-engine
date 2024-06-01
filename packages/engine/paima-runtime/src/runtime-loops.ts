@@ -1,6 +1,6 @@
 import process from 'process';
 import { doLog, logError, delay, GlobalConfig } from '@paima/utils';
-import { tx, DataMigrations } from '@paima/db';
+import { tx, DataMigrations, getScheduledDataByBlockHeight } from '@paima/db';
 import { getEarliestStartBlockheight, getEarliestStartSlot } from './cde-config/utils.js';
 import type { ChainFunnel, IFunnelFactory, ReadPresyncDataFrom } from './types.js';
 import type { ChainData, ChainDataExtension, GameStateMachine } from '@paima/sm';
@@ -16,6 +16,7 @@ import { cleanNoncesIfTime } from './nonce-gc.js';
 import type { PoolClient } from 'pg';
 import { FUNNEL_PRESYNC_FINISHED, ConfigNetworkType } from '@paima/utils';
 import type { CardanoConfig, EvmConfig } from '@paima/utils';
+import { wsSubscriptions } from './express-ws/express-ws.js';
 
 // The core logic of paima runtime which polls the funnel and processes the resulting chain data using the game's state machine.
 // Of note, the runtime is designed to continue running/attempting to process the next required block no matter what errors propagate upwards.
@@ -356,6 +357,32 @@ async function processSyncBlockData(
     return false;
   }
 
+  Object.entries(wsSubscriptions).forEach(([regex, wsList]) => {
+    const regExp = new RegExp(regex);
+
+    const macthedScheduledData =
+      chainData.scheduledData?.filter(scheduledData => regExp.test(scheduledData.input_data)) || [];
+
+    const matchedSubmittedData = chainData.submittedData?.filter(submittedData =>
+      regExp.test(submittedData.inputData)
+    );
+
+    if (macthedScheduledData.length > 0 || matchedSubmittedData.length > 0) {
+      const gameStateTransitionWsMsg = JSON.stringify({
+        event: 'gameStateTransition',
+        chainData: {
+          ...chainData,
+          scheduledData: macthedScheduledData,
+          submittedData: matchedSubmittedData,
+        },
+      });
+
+      wsList.forEach(ws => {
+        ws.send(gameStateTransitionWsMsg);
+      });
+    }
+  });
+
   return true;
 }
 
@@ -393,7 +420,14 @@ async function blockCoreProcess(
     if (DataMigrations.hasPendingMigrationForBlock(chainData.blockNumber)) {
       await DataMigrations.applyDataDBMigrations(dbTx, chainData.blockNumber);
     }
+
+    chainData.scheduledData = await getScheduledDataByBlockHeight.run(
+      { block_height: chainData.blockNumber },
+      dbTx
+    );
+
     await gameStateMachine.process(dbTx, chainData);
+
     exitIfStopped(run);
   } catch (err) {
     doLog(`[paima-runtime] Error occurred while SM processing of block ${chainData.blockNumber}:`);

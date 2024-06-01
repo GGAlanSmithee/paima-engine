@@ -1,6 +1,6 @@
 import type { Client, Pool, PoolClient, PoolConfig } from 'pg';
 
-import type { SQLUpdate } from '@paima/db';
+import type { IGetScheduledDataByBlockHeightResult, SQLUpdate } from '@paima/db';
 import type {
   ChainDataExtensionDatumType,
   ChainDataExtensionType,
@@ -20,6 +20,7 @@ import type {
 import { Type } from '@sinclair/typebox';
 import type { Static } from '@sinclair/typebox';
 import type { ProjectedNftStatus } from '@dcspark/carp-client';
+import type { WebSocketServer } from 'ws';
 
 export { SubmittedChainData, SubmittedData };
 
@@ -28,6 +29,7 @@ export interface ChainData {
   blockHash: string;
   blockNumber: number;
   submittedData: SubmittedData[];
+  scheduledData?: IGetScheduledDataByBlockHeightResult[];
   extensionDatums?: ChainDataExtensionDatum[];
   /**
    * Internal events are events related to this block, but that do not contribute to the block hash
