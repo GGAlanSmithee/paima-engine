@@ -27,4 +27,16 @@ export type WsExpressOption = {
   };
 };
 
+export type WsSubscribeMessage = {
+  type: 'subscribe';
+  regex: string;
+};
+
+export type WsUnsubscribeMessage = {
+  type: 'unsubscribe';
+  regex: string;
+};
+
+export type WsMessage = WsSubscribeMessage | WsUnsubscribeMessage;
+
 export type Args = Application | WsExpressOption;
